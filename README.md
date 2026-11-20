@@ -1,75 +1,26 @@
-# React + TypeScript + Vite
+# ポケモン図鑑
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React・TypeScript・Vite で作った日本語のポケモン図鑑。日本語名・英語名の部分一致検索、全国図鑑番号の完全一致検索、複合タイプ・世代・特性・フォルム・番号範囲の絞り込みに対応しています。検索条件と並び順は URL に保存されます。
 
-Currently, two official plugins are available:
+表示順は図鑑番号・名前・強さ（合計種族値）から選び、昇順と降順は個別に切り替えられます。図鑑番号と名前の順序・姿の表記は[ポケモンずかん](https://zukan.pokemon.co.jp/)を参考にしています。たとえばメガフシギバナとフシギバナ（キョダイマックスのすがた）を区別します。表記と同番号内での順序の補正は `src/data/form-display.json` にまとめています。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+詳細画面のタイプや特性を選ぶと、同じ条件のポケモンを一覧で確認できます。詳細検索の特性欄は五十音・かな・英語名から候補を探せて、各候補に現在の条件で該当する件数が表示されます。トップのピックアップは再読み込みごとに5種を選び直します。
 
-## React Compiler
+## 起動
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Node.js 24 を使用します。
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```sh
+npm ci
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+`npm run build` で本番ビルド、`npm run preview` でビルド結果を確認できます。GitHub Pages のパスは `/react-pokemon-zukan/` です。
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## データ
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+検索用の索引は [PokéAPI の CSV](https://github.com/PokeAPI/pokeapi/tree/master/data/v2/csv) から生成しています。種族の全国図鑑番号と、別の姿を区別する個別 ID を保持しています。詳細を開くと PokéAPI v2 から日本語名・図鑑説明・画像・タイプ・特性・種族値を取得し、通信待ちや失敗時には同梱の値を表示します。正面のドット絵を取得できたポケモンは、詳細画面の「ドット絵」で表示を切り替えられます。日本語の説明が未収録の場合はその旨を表示します。
 
-```
+検索対象を新しい上流データに更新するには、プロジェクト直下で `python3 scripts/build-catalog.py` を実行します。通常の起動やビルドに Python は不要です。
+
+イラストは [PokéAPI/sprites](https://github.com/PokeAPI/sprites) の official-artwork とスプライトを使用しています。画像の権利は各権利者に帰属します。Barlow Condensed のライセンスは `public/fonts/OFL-BarlowCondensed.txt` に同梱しています。

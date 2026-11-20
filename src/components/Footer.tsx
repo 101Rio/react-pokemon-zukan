@@ -1,13 +1,5 @@
-// src/components/Footer.tsx
-import React from 'react';
+import { Icon } from './Icon';
 
-const Footer: React.FC = () => {
-  return (
-    <footer className="bg-gray-200 text-center p-4 mt-8">
-      <p>&copy; 2024 Reactポケモン図鑑</p>
-    </footer>
-  );
-};
-
-export default Footer;
-
+export default function Footer() {
+  return <footer className="site-footer"><div className="shell footer-inner"><span><Icon name="ball" size={18} />ポケモン図鑑</span><a href="https://pokeapi.co/" target="_blank" rel="noreferrer" lang="en">Data by PokéAPI</a></div></footer>;
+}

@@ -1,23 +1,21 @@
-// src/components/Header.tsx
-import React from 'react';
-import { Link } from 'react-router-dom';
-import logo from '../assets/logo.svg';
+import { Link, useLocation } from 'react-router-dom';
+import { BallMark, Icon } from './Icon';
 
-const Header: React.FC = () => {
+export default function Header() {
+  const { pathname, search } = useLocation();
+  const listPage = pathname === '/';
+  const scrollHome = () => { if (listPage) window.scrollTo({ top: 0, behavior: 'instant' }); };
+  const params = new URLSearchParams(search);
+  params.set('advanced', '1');
   return (
-    <header className="bg-blue-500 text-white p-4">
-      <h1 className="text-xl md:text-2xl">
-        <Link to="/" className="inline-flex items-center gap-2 no-underline">
-          <img
-            src={logo}
-            alt="モンスターボールのアイコン"
-            className="w-8 h-8 md:w-10 md:h-10"
-          />
-          ポケモン図鑑
-        </Link>
-      </h1>
+    <header className="site-header">
+      <div className="shell head-inner">
+        <Link to="/" onClick={scrollHome} className="brand" aria-label="ポケモン図鑑 トップ"><BallMark /><span lang="en">POKÉDEX</span></Link>
+        <nav className="main-nav" aria-label="メインナビゲーション">
+          <Link to="/" onClick={scrollHome} aria-current={listPage ? 'page' : undefined}><Icon name="grid" size={17} />図鑑一覧</Link>
+          <Link to={{ pathname: '/', search: params.toString() }} replace={listPage}><Icon name="filters" size={18} />詳細検索</Link>
+        </nav>
+      </div>
     </header>
   );
-};
-
-export default Header;
+}

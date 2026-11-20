@@ -1,176 +1,114 @@
-// src/pages/PokemonDetail.tsx
+import { useEffect, useLayoutEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import React from 'react';
-import { Link, useParams } from 'react-router-dom';
 import { fetchPokemonDetail, PokemonNotFoundError } from '../api/pokemonDetail';
+import type { PokemonDetailData } from '../api/pokemonDetail';
 import { fetchPokemonIndex } from '../api/pokemon';
-import PokemonTypeLabel from '../components/PokemonTypeLabel';
+import { dexNumber, englishLabel, useCatalog } from '../api/catalog';
 import { apiQueryKeys } from '../queryKeys';
-import Skeleton from 'react-loading-skeleton';
-import 'react-loading-skeleton/dist/skeleton.css';
+import { emptyFilters, makeSearch, readSearch, searchCatalog } from '../search';
+import type { Filters } from '../search';
+import { pokemonName } from '../pokemonNames';
+import { typeInfo } from '../pokemonTypesMap';
+import { Icon } from '../components/Icon';
+import PokemonImage from '../components/PokemonImage';
+import PokemonTypeLabel from '../components/PokemonTypeLabel';
 
-const PokemonDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const pokemonId = Number(id);
-  const isValidId = /^[1-9]\d*$/.test(id ?? '') && Number.isSafeInteger(pokemonId);
-
-  const { data, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: apiQueryKeys.pokemon.detail(pokemonId),
-    queryFn: () => fetchPokemonDetail(pokemonId),
-    enabled: isValidId,
-    retry: (failureCount, queryError) => !(queryError instanceof PokemonNotFoundError) && failureCount < 3,
+export default function PokemonDetail() {
+  const { id } = useParams();
+  const [showSprite, setShowSprite] = useState(false);
+  const number = Number(id);
+  const valid = /^[1-9]\d*$/.test(id ?? '') && Number.isSafeInteger(number);
+  const { search } = useLocation();
+  const { data: catalog, isLoading: waitForCatalog } = useCatalog();
+  const entry = catalog?.byId.get(number);
+  const live = useQuery({
+    queryKey: apiQueryKeys.pokemon.detail(number),
+    queryFn: ({ signal }) => fetchPokemonDetail(number, signal),
+    enabled: valid,
+    retry: (count, error) => !(error instanceof PokemonNotFoundError) && count < 1,
+    staleTime: 30 * 60_000,
   });
-
-  const { data: pokemonIndex, isError: indexError, isFetching: isFetchingIndex, refetch: refetchIndex } = useQuery({
+  // Direct links to newer API records still work before the bundled index is refreshed.
+  const index = useQuery({
     queryKey: apiQueryKeys.pokemon.index,
     queryFn: fetchPokemonIndex,
-    enabled: isValidId,
-    staleTime: 60 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    enabled: Boolean(live.data && !entry && !waitForCatalog),
+    staleTime: 60 * 60_000,
   });
-  const currentIndex = pokemonIndex?.findIndex((pokemon) =>
-    Number(pokemon.url.split('/').filter(Boolean).pop()) === pokemonId
-  ) ?? -1;
-  const previousPokemon = currentIndex > 0 ? pokemonIndex?.[currentIndex - 1] : undefined;
-  const nextPokemon = currentIndex >= 0 ? pokemonIndex?.[currentIndex + 1] : undefined;
+  const cached: PokemonDetailData | undefined = entry && catalog ? {
+    id: entry.id, number: entry.number, name: entry.name, japaneseName: entry.species.ja,
+    types: entry.types, abilities: entry.abilities.map(key => catalog.abilities[key] ?? key),
+    description: entry.species.description || '説明文がありません。', image: null,
+    baseStats: entry.stats.map((value, i) => ({ name: catalog.statNames[i], value })),
+  } : undefined;
+  const data = live.data ?? cached;
+  const display = entry?.display ?? (data ? pokemonName(data.japaneseName, data.name) : undefined);
+  const title = display?.full;
+  const back = <Link className="back-link" to={{ pathname: '/', search }} state={{ returnToList: true }}><Icon name="left" size={16} />{search ? '検索結果に戻る' : '一覧に戻る'}</Link>;
+  useLayoutEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [number]);
+  useEffect(() => { document.title = title ? `${title} | ポケモン図鑑` : 'ポケモン詳細 | ポケモン図鑑'; }, [title]);
 
-  if (!isValidId) {
-    return (
-      <div className="p-4">
-        <p role="alert">図鑑番号が正しくありません。</p>
-        <Link to="/" className="mt-3 inline-block text-blue-500 underline">一覧に戻る</Link>
-      </div>
-    );
+  if (!valid || !data) {
+    const loading = valid && (live.isPending || waitForCatalog);
+    const notFound = live.error instanceof PokemonNotFoundError;
+    return <div className="shell detail-shell">{back}<div className="state-box" role={loading ? 'status' : 'alert'}>
+      <Icon name="ball" size={35} />
+      <h1>{!valid ? '図鑑番号が正しくありません' : loading ? 'ポケモンを読み込み中…' : notFound ? 'ポケモンが見つかりませんでした' : '詳細を読み込めませんでした'}</h1>
+      {valid && !loading && !notFound && <button type="button" className="btn secondary" disabled={live.isFetching} onClick={() => void live.refetch()}>再読み込み</button>}
+    </div></div>;
   }
-  if (isLoading) return <PokemonDetailSkeleton />;
-  if (!data) {
-    const notFound = error instanceof PokemonNotFoundError;
-    return (
-      <div className="p-4">
-        <p role="alert">{notFound ? 'ポケモンが見つかりません。' : 'ポケモンを読み込めませんでした。接続を確認して、もう一度お試しください。'}</p>
-        <div className="mt-3 flex items-center gap-4">
-          <Link to="/" className="text-blue-500 underline">一覧に戻る</Link>
-          {!notFound ? (
-            <button type="button" onClick={() => void refetch()} disabled={isFetching} className="px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50">
-              再読み込み
-            </button>
-          ) : null}
-        </div>
-      </div>
-    );
+  const pixel = Boolean(showSprite && data.sprite);
+  const currentType = typeInfo(data.types[0]);
+  const total = data.baseStats.reduce((sum, stat) => sum + stat.value, 0);
+  const searchState = readSearch(new URLSearchParams(search));
+  const related = (filters: Partial<Filters>) => ({
+    pathname: '/', search: makeSearch('', { ...emptyFilters, ...filters }, searchState.sort, searchState.direction).toString(),
+  });
+  let neighbours: { id: number; label: string }[] = [];
+  if (entry && catalog) {
+    const matches = searchCatalog(catalog, searchState.query, searchState.filters, searchState.sort, searchState.direction);
+    const scope = matches.some(item => item.id === number) ? matches : searchCatalog(catalog, '', emptyFilters, searchState.sort, searchState.direction);
+    neighbours = scope.map(item => ({ id: item.id, label: item.display.full }));
+  } else if (index.data) {
+    neighbours = index.data.map(item => ({ id: Number(item.url.split('/').filter(Boolean).pop()), label: item.name }));
   }
-  const totalStats = data.baseStats.reduce((sum, stat) => sum + stat.value, 0);
+  const position = neighbours.findIndex(item => item.id === number);
+  const previous = position > 0 ? neighbours[position - 1] : undefined;
+  const next = position >= 0 ? neighbours[position + 1] : undefined;
 
-  return (
-    <div className="p-4 max-w-[400px] m-auto">
-      <Link to="/" className="px-4 py-2 bg-blue-500 text-white rounded-md mb-4">← 一覧に戻る</Link>
-      {error ? (
-        <div className="mt-4">
-          <p role="alert">情報を更新できませんでした。前に読み込んだ内容を表示しています。</p>
-          <button type="button" onClick={() => void refetch()} disabled={isFetching} className="mt-2 text-blue-500 underline disabled:opacity-50">
-            再読み込み
-          </button>
+  return <div className="shell detail-shell" style={{ '--type': currentType.color } as CSSProperties}>
+    {back}
+    <article className="detail-layout">
+      <div className="detail-art-panel">
+        <div className="detail-canvas"><i className="stage-ball" aria-hidden="true" /><span className="card-number"><span>No.</span> {dexNumber(data.number)}</span><Icon name="scan" size={24} />
+          <PokemonImage key={number} id={number} pixel={pixel} image={pixel ? data.sprite : data.image} eager name={title ?? data.japaneseName} />
         </div>
-      ) : null}
-      <div className="mt-4 bg-white shadow-md rounded p-8 flex flex-col items-center gap-4">
-        {data.image ? (
-          <img src={data.image} alt={data.japaneseName} className="w-40 h-40" />
-        ) : (
-          <div className="w-40 h-40 flex items-center justify-center text-gray-500">画像がありません</div>
-        )}
-        <h1 className="mt-4 text-2xl font-bold">{data.japaneseName} (#{data.number})</h1>
-        <p className="mt-2 text-justify">{data.description}</p>
-        <div className="grid grid-cols-2 gap-2">
-          {data?.types?.map((type) => (
-            <PokemonTypeLabel key={type} type={type} />
-          ))}
-        </div>
-        <span className="w-fit whitespace-nowrap text-right">特性</span>
-        <div className="flex gap-2">
-          <div className="grid grid-cols-2 gap-2 w-full">
-            {data?.abilities?.map((ability) => (
-              <span key={ability}>{ability}</span>
-            ))}
-          </div>
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-x-2 w-full">
-          {data?.baseStats?.map((stat) => (
-            <div key={stat.name} className="flex items-center">
-              <span className="w-24 text-right mr-2">{stat.name}</span>
-              <div className="flex-1 bg-gray-200 rounded-full h-4">
-                <div
-                  className="bg-blue-600 rounded-full h-4"
-                  style={{ width: `${Math.min((stat.value / 255) * 100, 100)}%` }}
-                ></div>
-              </div>
-              <span className="ml-2 w-8">{stat.value}</span>
-            </div>
-          ))}
-          {/* 合計種族値 */}
-          <div className="flex items-center">
-            <span className="w-24 text-right mr-2">合計</span>
-            <div className="flex-1 bg-gray-200 rounded-full h-4">
-              <div
-                className="bg-blue-600 rounded-full h-4"
-                style={{ width: `${Math.min((totalStats / 780) * 100, 100)}%` }}
-              ></div>
-            </div>
-            <span className="ml-2 w-8">{totalStats}</span>
-          </div>
-        </div>
+        <div className="specimen-strip"><Icon name="ball" size={18} /><span lang="en">{entry ? englishLabel(entry) : data.name}</span>{data.sprite ? <button type="button" aria-pressed={pixel} onClick={() => setShowSprite(previous => !previous)}><Icon name="grid" size={14} />ドット絵</button> : <i aria-hidden="true" />}</div>
       </div>
-      {indexError && !pokemonIndex ? (
-        <div className="mt-4">
-          <p role="alert">前後のポケモンを確認できませんでした。</p>
-          <button type="button" onClick={() => void refetchIndex()} disabled={isFetchingIndex} className="mt-2 text-blue-500 underline disabled:opacity-50">
-            再読み込み
-          </button>
-        </div>
-      ) : (
-        <div className="mt-4 flex justify-between">
-          {previousPokemon ? <Link to={`/pokemon/${previousPokemon.url.split('/').filter(Boolean).pop()}`} className="px-4 py-2 bg-blue-500 text-white rounded-md">前へ</Link> : <span />}
-          {nextPokemon ? <Link to={`/pokemon/${nextPokemon.url.split('/').filter(Boolean).pop()}`} className="px-4 py-2 bg-blue-500 text-white rounded-md">次へ</Link> : null}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const PokemonDetailSkeleton: React.FC = () => {
-  return (
-    <div className="p-4 max-w-[400px] m-auto">
-      <div className="px-4 py-2 bg-blue-500 text-white rounded-md mb-4 w-24">
-        <Skeleton />
+      <div className="detail-sheet">
+        <div className="detail-title"><span className="small-kicker" lang="en">POKÉDEX ENTRY</span><h1>{display?.name ?? data.japaneseName}{display?.form && <small className="name-form">（{display.form}）</small>}</h1></div>
+        <div className="types detail-type-links">{data.types.map(type => {
+          const info = typeInfo(type);
+          return <Link key={info.type} to={related({ types: [info.type] })} state={{ focusResults: true }}
+            aria-label={info.jaType + 'タイプのポケモンを検索'} style={{ '--type': info.color } as CSSProperties}>
+            <PokemonTypeLabel type={info.type} /><Icon name="search" size={14} />
+          </Link>;
+        })}</div>
+        <section className="detail-section"><h2><Icon name="book" size={17} />図鑑説明</h2><p className="description">{data.description}</p></section>
+        <section className="detail-section"><h2><Icon name="stack" size={17} />特性</h2><div className="ability-list">{data.abilities.length ? data.abilities.map(ability => <Link key={ability} to={related({ ability, abilityExact: true })} state={{ focusResults: true }}
+          aria-label={'特性「' + ability + '」のポケモンを検索'}>{ability}<Icon name="search" size={14} /></Link>) : <span>データなし</span>}</div></section>
+        <section className="detail-section stats"><div className="stats-heading"><h2><Icon name="bars" size={17} />種族値</h2><span>合計 <strong>{total}</strong></span></div>
+          <dl>{data.baseStats.map(stat => <div className="stat-line" key={stat.name}><dt>{stat.name}</dt><dd><span className="stat-track" aria-hidden="true"><i style={{ width: `${Math.min(100, stat.value / 255 * 100)}%` }} /></span><strong>{stat.value}</strong></dd></div>)}</dl>
+        </section>
       </div>
-      <div className="mt-4 bg-white shadow-md rounded p-8 flex flex-col items-center gap-4">
-        <Skeleton circle={true} width={160} height={160} />
-        <Skeleton width={200} height={24} />
-        <div className="w-full"><Skeleton height={60} /></div>
-        <div className="grid grid-cols-2 gap-2 w-full">
-          <Skeleton width={100} height={24} />
-          <Skeleton width={100} height={24} />
-        </div>
-        <div className="grid grid-cols-2 gap-2 w-full">
-          <Skeleton width={100} height={24} />
-          <Skeleton width={100} height={24} />
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-x-2 w-full">
-          {[...Array(6)].map((_, index) => (
-            <div key={index} className="flex items-center">
-              <Skeleton width={60} height={20} />
-              <div className="flex-1 ml-2">
-                <Skeleton height={20} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="mt-4 flex justify-between">
-        <Skeleton width={80} height={36} />
-        <Skeleton width={80} height={36} />
-      </div>
-    </div>
-  );
-};
-
-export default PokemonDetail;
+    </article>
+    {live.isError && <p className="refresh-notice" role="status">{live.data ? '前に読み込んだ情報を表示しています。' : '収録データを表示しています。'}<button type="button" disabled={live.isFetching} onClick={() => void live.refetch()}>最新情報を再取得</button></p>}
+    <nav className="entry-nav" aria-label="前後のポケモン">
+      {previous && <Link to={{ pathname: `/pokemon/${previous.id}`, search }}><Icon name="left" size={18} /><span><small>前のポケモン</small><strong>{previous.label}</strong></span></Link>}
+      {next && <Link className="next" to={{ pathname: `/pokemon/${next.id}`, search }}><span><small>次のポケモン</small><strong>{next.label}</strong></span><Icon name="right" size={18} /></Link>}
+    </nav>
+    {!entry && index.isError && <p className="refresh-notice">前後のポケモンを確認できませんでした。<button type="button" disabled={index.isFetching} onClick={() => void index.refetch()}>再読み込み</button></p>}
+  </div>;
+}

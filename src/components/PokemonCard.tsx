@@ -1,25 +1,29 @@
-// src/components/PokemonCard.tsx
-import React from 'react';
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import type { PokemonWithJapaneseName } from '../api/pokemonWithJapaneseName';
+import { dexNumber, englishLabel } from '../api/catalog';
+import type { CatalogEntry } from '../api/catalog';
+import { typeInfo } from '../pokemonTypesMap';
+import PokemonTypeLabel from './PokemonTypeLabel';
+import PokemonImage from './PokemonImage';
+import { Icon } from './Icon';
 
-type PokemonCardProps = {
-  pokemon: PokemonWithJapaneseName;
-};
+interface Props { pokemon: CatalogEntry; search: string; onOpen: () => void; eager?: boolean; showStats?: boolean }
 
-const PokemonCard: React.FC<PokemonCardProps> = ({ pokemon }) => {
-  const id = pokemon.url.split('/').filter(Boolean).pop();
-  const imageUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
-
+export default function PokemonCard({ pokemon, search, onOpen, eager, showStats }: Props) {
+  const { name, form } = pokemon.display;
   return (
-    <Link to={`/pokemon/${id}`}>
-      <div className="bg-white shadow-md rounded-lg p-4 flex flex-col items-center hover:shadow-xl transition-shadow">
-        <p className="text-sm text-gray-500 mr-auto">No. {pokemon.number}</p>
-        <img src={imageUrl} alt={pokemon.japaneseName} className="w-20 h-20" />
-        <h2 className="mt-2 text-lg font-semibold">{pokemon.japaneseName}</h2>
+    <Link className="pokemon-card" to={{ pathname: `/pokemon/${pokemon.id}`, search }} onClick={onOpen} style={{ '--type': typeInfo(pokemon.types[0]).color } as CSSProperties}>
+      <div className="card-stage">
+        <span className="card-number"><span>No.</span> {dexNumber(pokemon.number)}</span>
+        <span className="card-scan" aria-hidden="true"><Icon name="scan" size={15} /></span>
+        <i className="stage-ball" aria-hidden="true" />
+        <PokemonImage id={pokemon.id} eager={eager} />
+      </div>
+      <div className="card-info">
+        <div className="card-title"><h3>{name}{form && <small className="name-form">（{form}）</small>}</h3><span lang="en">{englishLabel(pokemon)}</span></div>
+        {showStats && <div className="card-stats">合計種族値 <b>{pokemon.stats.reduce((sum, stat) => sum + stat, 0)}</b></div>}
+        <div className="types">{pokemon.types.map(type => <PokemonTypeLabel key={type} type={type} />)}</div>
       </div>
     </Link>
   );
-};
-
-export default PokemonCard;
+}
