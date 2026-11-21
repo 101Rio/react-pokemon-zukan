@@ -2,6 +2,9 @@ import type { Catalog } from './api/catalog';
 import { pokemonTypesMap } from './pokemonTypesMap';
 
 export type Filters = {
+  speciesId: number | null;
+  height: string;
+  weight: string;
   types: string[];
   generation: string;
   ability: string;
@@ -11,25 +14,52 @@ export type Filters = {
   form: string;
 };
 
-export const emptyFilters: Filters = { types: [], generation: '', ability: '', abilityExact: false, from: '', to: '', form: '' };
+export const emptyFilters: Filters = { speciesId: null, height: '', weight: '', types: [], generation: '', ability: '', abilityExact: false, from: '', to: '', form: '' };
+export const measureKeys = ['height', 'weight'] as const;
+export type Measure = typeof measureKeys[number];
+export const measures = { height: { label: '高さ', unit: 'm' }, weight: { label: '体重', unit: 'kg' } };
+export const unknownWeight = '不明';
+
+// The catalog stores integer decimetres / hectograms. The UI and URLs use m / kg.
+export function measureInput(tenths: number | null) {
+  return tenths === null ? unknownWeight : (tenths / 10).toFixed(1);
+}
+
+export function canonicalMeasure(field: Measure, value: string) {
+  const text = value.normalize('NFKC').trim();
+  if (field === 'weight' && text === unknownWeight) return unknownWeight;
+  if (!/^(?:\d+(?:\.\d?0*)?|\.\d0*)$/.test(text)) return '';
+  const tenths = Math.round(Number(text) * 10);
+  return Number.isSafeInteger(tenths) && tenths > 0 ? measureInput(tenths) : '';
+}
+
+export function measureLabel(field: Measure, value: string) {
+  return value === unknownWeight ? value : `${value} ${measures[field].unit}`;
+}
 export const sortOptions = { number: '図鑑番号', kana: '名前', stats: '強さ（合計種族値）' };
 export type Sort = keyof typeof sortOptions;
 export type Direction = 'asc' | 'desc';
 const typeKeys = new Set(pokemonTypesMap.map(type => type.type));
 
-export function readSearch(params: URLSearchParams) {
+export function readSearch(params: URLSearchParams, catalog?: Catalog) {
   const types = [...new Set(params.getAll('type').filter(type => typeKeys.has(type)))].slice(0, 2);
   const value = (key: string) => params.get(key) ?? '';
   const number = (key: string) => /^\d{1,6}$/.test(value(key)) ? value(key) : '';
   const form = value('form');
+  const query = value('q');
+  const speciesId = Number(number('species')) || null;
+  const speciesName = speciesId && catalog?.bySpecies.get(speciesId)?.[0]?.species.ja;
   const legacy = value('sort');
   const sort: Sort = Object.hasOwn(sortOptions, legacy) ? legacy as Sort : 'number';
   const dir = value('dir');
   // Previously "reverse" encoded number-desc and "stats" on its own meant strongest first.
   const direction: Direction = dir === 'asc' || dir === 'desc' ? dir : legacy === 'reverse' || legacy === 'stats' ? 'desc' : 'asc';
   return {
-    query: value('q'), sort, direction,
+    query, sort, direction,
     filters: {
+      speciesId: query && (!catalog || query === speciesName) ? speciesId : null,
+      height: canonicalMeasure('height', value('height')),
+      weight: canonicalMeasure('weight', value('weight') === 'unknown' ? unknownWeight : value('weight')),
       types, generation: number('gen'),
       ability: value('ability'), abilityExact: Boolean(value('ability')) && value('exact') === '1',
       from: number('from'), to: number('to'),
@@ -41,6 +71,9 @@ export function readSearch(params: URLSearchParams) {
 export function makeSearch(query: string, filters: Filters, sort: Sort = 'number', direction: Direction = 'asc') {
   const params = new URLSearchParams();
   if (query) params.set('q', query);
+  if (query && filters.speciesId) params.set('species', String(filters.speciesId));
+  if (filters.height) params.set('height', filters.height);
+  if (filters.weight) params.set('weight', filters.weight === unknownWeight ? 'unknown' : filters.weight);
   filters.types.forEach(type => params.append('type', type));
   if (filters.generation) params.set('gen', filters.generation);
   if (filters.ability.trim()) {
@@ -63,14 +96,19 @@ export function normalizeName(value: string) {
 }
 
 export function filterCatalog(catalog: Catalog, query: string, filters: Filters) {
-  const text = query.normalize('NFKC').trim();
+  const candidates = filters.speciesId === null ? catalog.entries : catalog.bySpecies.get(filters.speciesId) ?? [];
+  const text = filters.speciesId === null ? query.normalize('NFKC').trim() : '';
   const numeric = text.match(/^(?:#|no\.?\s*|図鑑番号\s*)?\s*(\d+)$/i);
   const terms = numeric ? [] : text.split(/\s+/).map(normalizeName).filter(Boolean);
   const ability = normalizeName(filters.ability);
   const abilityMatches = (value: string) => filters.abilityExact ? normalizeName(value) === ability : normalizeName(value).includes(ability);
   const low = Number(filters.from) || 0;
   const high = Number(filters.to) || Infinity;
-  return catalog.entries.filter(entry => {
+  const heightDm = Math.round(Number(filters.height) * 10);
+  const weightHg = filters.weight === unknownWeight ? null : Math.round(Number(filters.weight) * 10);
+  return candidates.filter(entry => {
+    if (filters.height && entry.heightDm !== heightDm) return false;
+    if (filters.weight && entry.weightHg !== weightHg) return false;
     if (numeric && entry.number !== Number(numeric[1]) && entry.id !== Number(numeric[1])) return false;
     if (entry.number < low || entry.number > high) return false;
     if (filters.generation && entry.species.generation !== Number(filters.generation)) return false;

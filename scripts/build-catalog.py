@@ -82,6 +82,10 @@ for row in read_table("pokemon"):
         "form": form_name,
         "englishForm": english_form,
         "variant": row["is_default"] == "0",
+        "heightDm": int(row["height"]),
+        # Gigantamax weights are unpublished. The CSV uses 10000 for these
+        # and 0 for Eternamax, neither of which is a measured weight.
+        "weightHg": None if row["identifier"].endswith("-gmax") or not int(row["weight"] or 0) else int(row["weight"]),
         "types": [type_keys[r["type_id"]] for r in types[pid]],
         "abilities": [ability_keys[r["ability_id"]] for r in abilities[pid]],
         "stats": [int(r["base_stat"]) for r in stats[pid]],
@@ -93,9 +97,16 @@ catalog = {
     "statNames": [stat_names[i] for i in range(1, 7)],
     "entries": entries,
 }
-destination = Path(__file__).resolve().parents[1] / "public/data/catalog.json"
-destination.parent.mkdir(parents=True, exist_ok=True)
-temporary = destination.with_suffix(".tmp")
-temporary.write_text(json.dumps(catalog, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
-temporary.replace(destination)
-print(f"{len(species)} species, {len(entries)} entries")
+def write_json(destination, value):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(".tmp")
+    temporary.write_text(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+    temporary.replace(destination)
+
+
+root = Path(__file__).resolve().parents[1]
+artwork = root / "public/artwork"
+illustrated = sorted(e["id"] for e in entries if (artwork / f'{e["id"]}.webp').is_file())
+write_json(root / "public/data/catalog.json", catalog)
+write_json(root / "src/data/local-artwork.json", illustrated)
+print(f"{len(species)} species, {len(entries)} entries, {len(illustrated)} local images")

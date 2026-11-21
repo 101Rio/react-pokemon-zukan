@@ -4,6 +4,7 @@ import { dexNumber } from '../api/catalog';
 import type { CatalogEntry } from '../api/catalog';
 import { Icon } from './Icon';
 import PokemonImage from './PokemonImage';
+import PokemonNameLabel from './PokemonNameLabel';
 
 export default function Hero({ entries, onOpen }: { entries: CatalogEntry[]; onOpen: () => void }) {
   const [{ index, cycle, manual }, setSelection] = useState({ index: 0, cycle: 0, manual: false });
@@ -44,21 +45,23 @@ export default function Hero({ entries, onOpen }: { entries: CatalogEntry[]; onO
         </div>
         <div className="showcase" aria-label="ピックアップポケモン">
           <div className="reticle" aria-hidden="true"><i /><b /><span /></div>
-          {pokemon && page && <>
+          {pokemon && page &&
             <Link className="showcase-art" onClick={onOpen} to={page} aria-label={pokemon.display.full + 'の詳細を見る'}>
               {entries.map((entry, i) => <span key={entry.id} className="showcase-slide" data-active={index === i} aria-hidden="true">
                 <PokemonImage id={entry.id} featured eager />
               </span>)}
-            </Link>
-            <div className="showcase-controls">
-              <button type="button" onClick={() => switchBy(-1)} aria-label="前のピックアップ"><Icon name="left" size={15} /></button>
-              <Link className="showcase-label" onClick={onOpen} to={page} aria-live={manual ? 'polite' : 'off'}>
-                <span>No. {dexNumber(pokemon.number)}</span><strong>{pokemon.display.name}{pokemon.display.form && <small>（{pokemon.display.form}）</small>}</strong>
-              </Link>
-              <button type="button" onClick={() => switchBy(1)} aria-label="次のピックアップ"><Icon name="right" size={15} /></button>
-            </div>
-          </>}
+            </Link>}
         </div>
+        {pokemon && page && <div className="showcase-controls">
+          <button type="button" onClick={() => switchBy(-1)} aria-label="前のピックアップ"><Icon name="left" size={15} /></button>
+          <Link className="showcase-label" onClick={onOpen} to={page} aria-live={manual ? 'polite' : 'off'}>
+            {entries.map((entry, i) => <span key={entry.id} className="showcase-caption" aria-hidden={index !== i}>
+              <span className="showcase-number">No. {dexNumber(entry.number)}</span>
+              <PokemonNameLabel entry={entry} />
+            </span>)}
+          </Link>
+          <button type="button" onClick={() => switchBy(1)} aria-label="次のピックアップ"><Icon name="right" size={15} /></button>
+        </div>}
       </div>
     </section>
   );

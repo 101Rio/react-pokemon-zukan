@@ -17,6 +17,8 @@ interface RecordData {
   form: string;
   englishForm: string;
   variant: boolean;
+  heightDm: number;
+  weightHg: number | null;
   types: string[];
   abilities: string[];
   stats: number[];
@@ -37,6 +39,7 @@ export interface CatalogEntry extends RecordData {
 export interface Catalog {
   entries: CatalogEntry[];
   byId: Map<number, CatalogEntry>;
+  bySpecies: Map<number, CatalogEntry[]>;
   featured: CatalogEntry[];
   abilities: Record<string, string>;
   statNames: string[];
@@ -47,18 +50,28 @@ export interface Catalog {
 
 // One small index covers all forms. Filtering never requests individual Pokémon.
 async function loadCatalog(): Promise<Catalog> {
-  const response = await fetch(`${import.meta.env.BASE_URL}data/catalog.json`);
+  const response = await fetch(`${import.meta.env.BASE_URL}data/catalog.json?v=2`);
   if (!response.ok) throw new Error('図鑑データを読み込めませんでした。');
   const data: CatalogFile = await response.json();
   const entries = data.entries.map(record => {
     const species = data.species[record.number];
     return { ...record, species, display: pokemonName(species.ja, record.name, record.form, record.variant, record.englishForm) };
   });
+  const bySpecies = new Map<number, CatalogEntry[]>();
+  for (const entry of entries) {
+    const family = bySpecies.get(entry.number);
+    if (family) family.push(entry);
+    else bySpecies.set(entry.number, [entry]);
+  }
+  for (const family of bySpecies.values()) {
+    family.sort((a, b) => Number(a.variant) - Number(b.variant) || a.display.order - b.display.order || a.id - b.id);
+  }
   const numbers = Object.keys(data.species).map(Number);
   return {
     entries,
     featured: featuredForDocument(entries),
     byId: new Map(entries.map(entry => [entry.id, entry])),
+    bySpecies,
     abilities: data.abilities,
     statNames: data.statNames,
     generations: [...new Set(entries.map(entry => entry.species.generation))].sort((a, b) => a - b),

@@ -10,7 +10,7 @@ import TypeIcon from '../components/TypeIcon';
 import AdvancedSearch from '../components/AdvancedSearch';
 import PokemonCard from '../components/PokemonCard';
 import { typeInfo } from '../pokemonTypesMap';
-import { emptyFilters, makeSearch, readSearch, searchCatalog, sortOptions } from '../search';
+import { emptyFilters, makeSearch, measureKeys, measureLabel, measures, readSearch, searchCatalog, sortOptions } from '../search';
 import type { Direction, Filters, Sort } from '../search';
 
 const quickTypes = ['fire', 'water', 'grass', 'electric', 'ghost'];
@@ -55,18 +55,24 @@ export default function PokemonList() {
   const [params, setParams] = useSearchParams();
   const { state } = useLocation();
   const navigation = useNavigationType();
-  const { query, filters, sort, direction } = useMemo(() => readSearch(params), [params]);
+  const { query, filters, sort, direction } = useMemo(() => readSearch(params, catalog), [params, catalog]);
   const base = makeSearch(query, filters, sort, direction).toString();
   const search = base ? '?' + base : '';
   const [restore] = useState(() => (navigation === 'POP' || state?.returnToList) && lastPosition?.search === search ? lastPosition : undefined);
   const heading = useRef<HTMLHeadingElement>(null);
+  const searchConsole = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [composing, setComposing] = useState<string | null>(null);
-  const advanced = params.get('advanced') === '1';
+  const drawer = params.get('advanced');
+  const focusMeasure = drawer === 'height' || drawer === 'weight' ? drawer : undefined;
+  const advanced = drawer === '1' || Boolean(focusMeasure);
   const entries = useMemo(() => catalog ? searchCatalog(catalog, query, filters, sort, direction) : [], [catalog, query, filters, sort, direction]);
 
   function update(newQuery: string, next: Filters, order = sort, dir = direction) {
     setParams(makeSearch(newQuery, next, order, dir), { replace: true });
+  }
+  function editQuery(value: string) {
+    update(value, { ...filters, speciesId: null });
   }
   function openAdvanced() {
     const next = makeSearch(query, filters, sort, direction);
@@ -77,6 +83,10 @@ export default function PokemonList() {
   const chips: { label: string; remove: () => void }[] = [
     ...filters.types.map(type => ({ label: typeInfo(type).jaType, remove: () => update(query, { ...filters, types: filters.types.filter(v => v !== type) }) })),
   ];
+  if (filters.speciesId !== null) chips.unshift({ label: `同種：${query}`, remove: () => editQuery('') });
+  for (const key of measureKeys) {
+    if (filters[key]) chips.push({ label: `${measures[key].label}：${measureLabel(key, filters[key])}`, remove: () => update(query, { ...filters, [key]: '' }) });
+  }
   if (filters.generation) chips.push({ label: `第${filters.generation}世代`, remove: () => update(query, { ...filters, generation: '' }) });
   if (filters.ability) chips.push({ label: `特性：${filters.ability}`, remove: () => update(query, { ...filters, ability: '', abilityExact: false }) });
   if (filters.form) chips.push({ label: filters.form === 'base' ? '標準の姿のみ' : '別の姿のみ', remove: () => update(query, { ...filters, form: '' }) });
@@ -86,24 +96,25 @@ export default function PokemonList() {
     if (!restore) window.scrollTo({ top: 0, behavior: 'instant' });
   }, [restore]);
   useLayoutEffect(() => {
-    if (state?.focusResults && !restore) {
-      heading.current?.focus({ preventScroll: true });
-      heading.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    if (!restore && (state?.focusSearch || state?.focusResults)) {
+      const target = state.focusSearch ? searchConsole.current : heading.current;
+      if (!advanced) target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ block: 'start', behavior: 'instant' });
     }
-  }, [restore, state?.focusResults]);
+  }, [restore, state?.focusResults, state?.focusSearch, advanced]);
   useEffect(() => { document.title = 'ポケモン図鑑'; }, []);
 
   return <>
     <Hero entries={catalog?.featured ?? []} onOpen={() => { lastPosition = { search, limit: pageSize, y: window.scrollY }; }} />
     <div className="shell catalog-shell">
-      <section className="search-console" aria-label="ポケモンを探す">
+      <section className="search-console" ref={searchConsole} tabIndex={-1} aria-label="ポケモンを探す">
         <div className="search-row">
           <label className="search-box"><Icon name="search" size={23} /><span className="sr-only">名前・図鑑番号で検索</span>
             <input ref={input} type="search" enterKeyHint="search" autoComplete="off" placeholder="名前・図鑑番号" value={composing ?? query}
-              onCompositionStart={e => setComposing(e.currentTarget.value)} onCompositionEnd={e => { setComposing(null); update(e.currentTarget.value, filters); }}
-              onChange={e => composing === null ? update(e.target.value, filters) : setComposing(e.target.value)} />
+              onCompositionStart={e => setComposing(e.currentTarget.value)} onCompositionEnd={e => { setComposing(null); if (e.currentTarget.value !== query) editQuery(e.currentTarget.value); }}
+              onChange={e => composing === null ? editQuery(e.target.value) : setComposing(e.target.value)} />
           </label>
-          {query && <button className="clear-query" type="button" aria-label="キーワードを消去" onClick={() => { setComposing(null); update('', filters); input.current?.focus(); }}><Icon name="close" size={16} /></button>}
+          {query && <button className="clear-query" type="button" aria-label="キーワードを消去" onClick={() => { setComposing(null); editQuery(''); input.current?.focus(); }}><Icon name="close" size={16} /></button>}
           <button type="button" className="advanced-trigger" onClick={openAdvanced} aria-haspopup="dialog"><Icon name="filters" size={19} />詳細検索{chips.length > 0 && <span>{chips.length}</span>}</button>
         </div>
         <div className="quick-filters" aria-label="タイプで絞り込み">
@@ -120,7 +131,7 @@ export default function PokemonList() {
       </section>
       {chips.length > 0 && <div className="applied-filters" aria-label="適用中の条件">{chips.map(chip =>
         <button key={chip.label} type="button" onClick={chip.remove} aria-label={`${chip.label}の条件を解除`}>{chip.label}<Icon name="close" size={12} /></button>
-      )}<button type="button" className="clear-filters" onClick={() => update(query, emptyFilters)}>条件をクリア</button></div>}
+      )}<button type="button" className="clear-filters" onClick={() => update(filters.speciesId ? '' : query, emptyFilters)}>条件をクリア</button></div>}
       <section className="catalog-results" aria-labelledby="results-title">
         <header className="results-header">
           <div className="result-titles"><span className="title-stripe" aria-hidden="true" /><h2 id="results-title" ref={heading} tabIndex={-1}>{query || chips.length ? '検索結果' : 'ポケモン一覧'}</h2>
@@ -142,6 +153,7 @@ export default function PokemonList() {
           : <div className="state-box"><span className="state-symbol"><Icon name="search" size={32} /></span><h3>ポケモンが見つかりませんでした</h3><p>名前の一部で検索するか、絞り込み条件を減らしてみてください。</p><button className="btn secondary" type="button" onClick={reset}>検索条件をリセット</button></div>}
       </section>
     </div>
-    {advanced && catalog && <AdvancedSearch catalog={catalog} query={query} current={filters} onClose={() => update(query, filters)} onApply={next => update(query, next)} />}
+    {advanced && catalog && <AdvancedSearch catalog={catalog} query={query} current={filters} focusMeasure={focusMeasure}
+      onClose={() => update(query, filters)} onApply={(next, nextQuery) => update(nextQuery, next)} />}
   </>;
 }
