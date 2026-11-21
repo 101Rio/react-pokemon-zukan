@@ -26,7 +26,7 @@
   --display: "Barlow Condensed", "Arial Narrow", sans-serif;
 }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 280px; }
+body { margin: 0; }
 h1, h2, h3, p, ul, dl, dd { margin: 0; }
 button, input, select { font: inherit; color: inherit; }
 button, a, input, select { -webkit-tap-highlight-color: transparent; }

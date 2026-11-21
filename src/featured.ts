@@ -2,6 +2,7 @@ import type { CatalogEntry } from './api/catalog';
 import localArt from './data/local-artwork.json';
 
 const illustrated = new Set(localArt);
+const featuredCount = 6;
 const storageKey = `pokedex:${import.meta.env.BASE_URL}:previous-picks`;
 let current: CatalogEntry[] | undefined;
 
@@ -15,9 +16,9 @@ export function drawFeatured(entries: CatalogEntry[], previous: number[], random
   }
   const all = [...bySpecies.keys()];
   const fresh = all.filter(number => !previous.includes(number));
-  const pool = fresh.length >= 5 ? fresh : all;
+  const pool = fresh.length >= featuredCount ? fresh : all;
   const picks: CatalogEntry[] = [];
-  for (let i = 0; i < 5 && pool.length; i++) {
+  for (let i = 0; i < featuredCount && pool.length; i++) {
     const index = Math.floor(random() * pool.length);
     const number = pool[index];
     pool[index] = pool[pool.length - 1];
